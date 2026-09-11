@@ -332,7 +332,7 @@ jobs:
           compression-level: 0
 
   app:
-    runs-on: macos-15
+    runs-on: macos-26
     needs: [dxmt, ios-libs, fex]
     steps:
       - uses: actions/checkout@v4
