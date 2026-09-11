@@ -52,7 +52,7 @@ jobs:
           sed -i '' 's/MATCHES "Darwin"/MATCHES "Darwin|iOS"/' llvm-project/llvm/cmake/modules/AddLLVM.cmake
           cmake -S llvm-project/llvm -B llvm-host-build -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD="" \
-            -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF
+            -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF -DLLVM_TOOL_LTO_BUILD=OFF
           cmake --build llvm-host-build --target llvm-tblgen -- -j$(sysctl -n hw.ncpu)
           cmake -S llvm-project/llvm -B llvm-ios-build -G "Unix Makefiles" \
             -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
@@ -61,7 +61,7 @@ jobs:
             -DLLVM_TABLEGEN="$PWD/llvm-host-build/bin/llvm-tblgen" \
             -DLLVM_TARGETS_TO_BUILD="" -DLLVM_BUILD_UTILS=OFF \
             -DLLVM_INCLUDE_UTILS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
-            -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_BUILD_TOOLS=OFF -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF
+            -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_BUILD_TOOLS=OFF -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF -DLLVM_TOOL_LTO_BUILD=OFF
           cmake --build llvm-ios-build -- -j$(sysctl -n hw.ncpu)
           ls llvm-ios-build/lib/*.a | head -5
       - uses: actions/upload-artifact@v4
