@@ -19,7 +19,7 @@ jobs:
           name: llvm-mingw
           path: toolchains/${{ env.LLVM_MINGW_DIR }}
           repository: pokerootai/madeira
-          run-id: 34611331239
+          run-id: 34625758684
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download llvm-mingw
         if: steps.reuse-mingw.outcome != 'success'
@@ -39,7 +39,7 @@ jobs:
           name: llvm-ios
           path: toolchains
           repository: pokerootai/madeira
-          run-id: 34611331239
+          run-id: 34625758684
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build LLVM 15.0.7 for iOS
         if: steps.reuse-llvm.outcome != 'success'
@@ -239,7 +239,7 @@ jobs:
       - name: Build DXMT unix side + combine
         run: |
           set -e
-          bash build/dxmt-ios/build.sh
+          bash build/dxmt-ios/build.sh || { for f in build/dxmt-ios/obj/*.err; do echo "===== $f"; cat "$f"; done; exit 1; }
           cd build/dxmt-ios
           xcrun -sdk iphoneos libtool -static -o libdxmt_combined.a \
             obj/*.o ../../toolchains/llvm-ios-build/lib/*.a
