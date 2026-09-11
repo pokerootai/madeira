@@ -336,6 +336,10 @@ jobs:
     needs: [dxmt, ios-libs, fex]
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout FEX source headers (incl. fmt/range-v3/unordered_dense)
+        run: |
+          git submodule update --init FEX
+          cd FEX && git submodule update --init External/fmt External/range-v3 External/unordered_dense External/SoftFloat-3e External/xxhash External/cephes
       - uses: actions/download-artifact@v4
         with:
           name: dxmt-libs
@@ -434,7 +438,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             OTHER_LDFLAGS="-L$OLDPWD/glue -lmadeira_fex_glue" \
             -derivedDataPath build-out \
-            build 2>&1 | tee /tmp/xcodebuild.log | tail -40
+            build 2>&1 | tee /tmp/xcodebuild.log | tail -40 || { echo '=== compile errors ==='; grep -B3 -A6 'error:' /tmp/xcodebuild.log | head -150; exit 1; }
           APP=$(find build-out/Build/Products -name 'Madeira.app' -maxdepth 3 | head -1)
           echo "APP=$APP"
           test -n "$APP" && test -f "$APP/Madeira" || { echo "FATAL: no built binary"; exit 1; }
