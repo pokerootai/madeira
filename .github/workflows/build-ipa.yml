@@ -382,9 +382,28 @@ jobs:
           xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
             -miphoneos-version-min=17.0 -O2 -c glue/madeira_fex_glue.c -o glue/madeira_fex_glue.o
           xcrun -sdk iphoneos ar rcs glue/libmadeira_fex_glue.a glue/madeira_fex_glue.o
-      - name: xcodebuild (unsigned, device)
+      - name: Fetch VC++ runtime DLLs (Microsoft redistributable, per tools/fetch-vcruntime.md)
         run: |
           set -e
+          brew install sevenzip
+          curl -L https://aka.ms/vs/17/release/vc_redist.x64.exe -o /tmp/vcredist.exe
+          rm -rf /tmp/vcredist && 7zz x /tmp/vcredist.exe -o/tmp/vcredist >/dev/null
+          mkdir -p app/Madeira/x86_64-vcruntime
+          for cab in /tmp/vcredist/.rsrc/1033/CABINET/*.cab; do
+            7zz x "$cab" -oapp/Madeira/x86_64-vcruntime -y >/dev/null
+          done
+          ls app/Madeira/x86_64-vcruntime | head -30
+          python3 -c "
+          import os,sys
+          want=['concrt140.dll','msvcp140.dll','msvcp140_1.dll','msvcp140_2.dll','msvcp140_atomic_wait.dll','msvcp140_codecvt_ids.dll','vcamp140.dll','vccorlib140.dll','vcomp140.dll','vcruntime140.dll','vcruntime140_1.dll','vcruntime140_threads.dll']
+          have={f.lower() for f in os.listdir('app/Madeira/x86_64-vcruntime')}
+          missing=[w for w in want if w not in have]
+          if missing:
+              print('MISSING:',missing); print('have:',sorted(have)); sys.exit(1)
+          print('all 12 vcruntime DLLs present')"
+      - name: xcodebuild (unsigned, device)
+        run: |
+          set -eo pipefail
           cd app
           xcodebuild -project Madeira.xcodeproj -list || true
           xcodebuild -project Madeira.xcodeproj -scheme Madeira \
@@ -396,6 +415,7 @@ jobs:
             build 2>&1 | tee /tmp/xcodebuild.log | tail -40
           APP=$(find build-out/Build/Products -name 'Madeira.app' -maxdepth 3 | head -1)
           echo "APP=$APP"
+          test -n "$APP" && test -f "$APP/Madeira" || { echo "FATAL: no built binary"; exit 1; }
           mkdir -p Payload && cp -R "$APP" Payload/
           zip -qr Madeira-unsigned.ipa Payload
           ls -la Madeira-unsigned.ipa
@@ -406,6 +426,7 @@ jobs:
           rm -rf verify && mkdir verify && cd verify
           unzip -q ../Madeira-unsigned.ipa
           BIN="Payload/Madeira.app/Madeira"
+          test -f "$BIN"
           file "$BIN"
           if otool -l "$BIN" | grep -q 'arm64'; then echo "arch check: arm64 present"; fi
           if [ -d Payload/Madeira.app/_CodeSignature ]; then echo "ERROR: signed!"; exit 1; else echo "unsigned: OK (no _CodeSignature)"; fi
