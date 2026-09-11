@@ -464,3 +464,116 @@ jobs:
           name: Madeira-unsigned-ipa
           path: app/Madeira-unsigned.ipa
           compression-level: 0
+
+  sim-shots:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write bridge stubs (no JIT/wine in simulator)
+        run: |
+          set -e
+          mkdir -p sim
+          cat > sim/stubs.c <<'STUBC'
+          #include <stdint.h>
+          #include <stdbool.h>
+          #include <stddef.h>
+          typedef struct JITRegion { int dummy; } JITRegion;
+          bool fex_initialize(void) { return false; }
+          void fex_shutdown(void) {}
+          int64_t fex_test_execute(void) { return -1; }
+          void fex_set_log_callback(void (*cb)(const char *)) { (void)cb; }
+          int64_t fex_get_jit_write_offset(void) { return 0; }
+          int wine_process_start(const char *p) { (void)p; return -1; }
+          int wine_process_is_running(void) { return 0; }
+          int madeira_write_continue_flag(void) { return -1; }
+          int wineserver_start(const char *p) { (void)p; return -1; }
+          int wineserver_is_running(void) { return 0; }
+          void wineserver_stop(void) {}
+          void wineserver_inject_client_fd(int fd) { (void)fd; }
+          volatile int ws_log_quiet = 1;
+          JITRegion *jit_region_create(size_t size) { (void)size; return 0; }
+          void jit_region_destroy(JITRegion *r) { (void)r; }
+          bool jit_make_region_no_footprint(void *a, size_t s, const char *l) { (void)a;(void)s;(void)l; return false; }
+          void *jit_region_rw_ptr(JITRegion *r) { (void)r; return 0; }
+          void *jit_region_rx_ptr(JITRegion *r) { (void)r; return 0; }
+          size_t jit_region_size(JITRegion *r) { (void)r; return 0; }
+          void *jit_region_write(JITRegion *r, size_t o, const void *c, size_t cs) { (void)r;(void)o;(void)c;(void)cs; return 0; }
+          void jit_region_invalidate(JITRegion *r, size_t o, size_t s) { (void)r;(void)o;(void)s; }
+          bool jit_check_debugged(void) { return false; }
+          void jit_install_trap_handler(void) {}
+          void *jit26_prepare_region(void *a, size_t l) { (void)l; return a; }
+          void jit26_detach(void) {}
+          bool jit_test_mapping(void) { return false; }
+          int64_t jit_test_execute(void) { return -2; }
+          int64_t jit_test_execute_strategy2(void) { return -2; }
+          void jit_wx_probe(void) {}
+          void jit_set_log_callback(void (*cb)(const char *)) { (void)cb; }
+          int madeira_extract_prefix_tgz(const char *t, const char *d) { (void)t;(void)d; return -1; }
+          void wine_log_set_file(const char *p) { (void)p; }
+          void wine_set_ui_log_callback(void (*cb)(const char *)) { (void)cb; }
+          uint64_t madeira_get_present_count(void) { return 0; }
+          void madeira_set_vsync_locked(int l) { (void)l; }
+          int madeira_get_vsync_locked(void) { return 1; }
+          void winios_phase(const char *n) { (void)n; }
+          void winios_drv_register(void) {}
+          void madeira_set_diag_enabled(int on) { (void)on; }
+          STUBC
+          cat > sim/stubs.m <<'STUBM'
+          #import <QuartzCore/CAMetalLayer.h>
+          void madeira_display_set_layer(CAMetalLayer *layer) { (void)layer; }
+          STUBM
+          head -3 sim/stubs.c
+      - name: Compile SwiftUI app for simulator
+        run: |
+          set -e
+          cd app/Madeira
+          TGT=arm64-apple-ios17.0-simulator
+          xcrun -sdk iphonesimulator clang -target $TGT -c ../../sim/stubs.c -o ../../sim/stubs.o
+          xcrun -sdk iphonesimulator clang -target $TGT -c ../../sim/stubs.m -o ../../sim/stubs_m.o
+          xcrun -sdk iphonesimulator swiftc -target $TGT \
+            -import-objc-header Madeira-Bridging-Header.h \
+            -o ../../sim/MadeiraSim \
+            MadeiraApp.swift ContentView.swift EntitlementChecker.swift FPSOverlay.swift \
+            LogPattern.swift LogStore.swift LogTail.swift StikJITHelper.swift \
+            ../../sim/stubs.o ../../sim/stubs_m.o 2>&1 | tail -30
+          file ../../sim/MadeiraSim
+      - name: Bundle + boot simulator + screenshot
+        run: |
+          set -e
+          cd sim
+          mkdir -p MadeiraSim.app
+          cp MadeiraSim MadeiraSim.app/
+          cat > MadeiraSim.app/Info.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleIdentifier</key><string>com.madeira.sim</string>
+            <key>CFBundleExecutable</key><string>MadeiraSim</string>
+            <key>CFBundleName</key><string>MadeiraSim</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>0.1</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>MinimumOSVersion</key><string>17.0</string>
+            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+            <key>UILaunchScreen</key><dict/>
+            <key>UISupportedInterfaceOrientations</key>
+            <array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+          </dict>
+          </plist>
+          PLIST
+          DEVTYPE=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devicetypes']; ip=[x for x in d if x['productFamily']=='iPhone']; print(ip[-1]['identifier'])")
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=json.load(sys.stdin)['runtimes']; ios=[x for x in r if x['platform']=='iOS' and x.get('isAvailable')]; print(ios[-1]['identifier'])")
+          echo "devtype=$DEVTYPE runtime=$RUNTIME"
+          UDID=$(xcrun simctl create madeira-sim "$DEVTYPE" "$RUNTIME")
+          xcrun simctl boot "$UDID"
+          xcrun simctl install "$UDID" MadeiraSim.app
+          xcrun simctl launch "$UDID" com.madeira.sim || true
+          sleep 10
+          xcrun simctl io "$UDID" screenshot shot-portrait.png
+          echo "--- screenshot done"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sim-screenshots
+          path: sim/shot-portrait.png
