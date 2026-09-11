@@ -11,7 +11,18 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Try reuse llvm-mingw from previous run
+        id: reuse-mingw
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: llvm-mingw
+          path: toolchains/${{ env.LLVM_MINGW_DIR }}
+          repository: pokerootai/madeira
+          run-id: 34611331239
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download llvm-mingw
+        if: steps.reuse-mingw.outcome != 'success'
         run: |
           mkdir -p toolchains
           curl -L "$LLVM_MINGW_URL" | tar -xJ -C toolchains/
@@ -20,7 +31,18 @@ jobs:
           name: llvm-mingw
           path: toolchains/${{ env.LLVM_MINGW_DIR }}
           compression-level: 1
+      - name: Try reuse llvm-ios from previous run
+        id: reuse-llvm
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: llvm-ios
+          path: toolchains
+          repository: pokerootai/madeira
+          run-id: 34611331239
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build LLVM 15.0.7 for iOS
+        if: steps.reuse-llvm.outcome != 'success'
         run: |
           set -e
           mkdir -p toolchains && cd toolchains
@@ -130,7 +152,9 @@ jobs:
             -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_LTO=False -DBUILD_TESTS=False -DBUILD_TESTING=OFF -DBUILD_FEXCONFIG=False \
-            -DTUNE_CPU=none -DENABLE_OFFLINE_TELEMETRY=False
+            -DTUNE_CPU=none -DENABLE_OFFLINE_TELEMETRY=False \
+            -DCMAKE_C_FLAGS=-DFEX_IOS_HOST=1 \
+            -DCMAKE_CXX_FLAGS=-DFEX_IOS_HOST=1
           cmake --build build-ios -- -j$(sysctl -n hw.ncpu)
           find build-ios -name '*.a'
       - uses: actions/upload-artifact@v4
@@ -320,6 +344,14 @@ jobs:
           need_stub FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a
           need_stub FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a
           ls -la app/Madeira/*.a
+      - name: Build glue stubs for FEX iOS diagnostics symbols
+        run: |
+          set -e
+          mkdir -p glue
+          python3 -c "import base64;open('glue/madeira_fex_glue.c','wb').write(base64.b64decode('I2luY2x1ZGUgPHN0ZGludC5oPgovKiBHbHVlIHN0dWJzIGZvciBGRVggaU9TIGRpYWdub3N0aWNzIHN5bWJvbHMgZGVmaW5lZCBvbmx5IGluIEZFWCdzCiAqIFdpbmRvd3Mtb25seSBzb3VyY2VzIChTb3VyY2UvV2luZG93cy9BUk02NEVDKS4gQmVoYXZpb3ItcHJlc2VydmluZzoKICogSW9zTW9ub1Jlc29sdmVSVz0wIGZhbGxzIGJhY2sgdG8gdGhlIG9sZCBlbXVsYXRpb24gcGF0aCAodXBzdHJlYW0gY29tbWVudCkuICovCnVpbnQ2NF90IElvc0Zmc0J5cGFzc0xvZ1s0XSA9IHswLDAsMCwwfTsKdWludDY0X3QgSW9zSml0UmV2ZXJzZVRyYW5zbGF0ZSh1aW50NjRfdCBBZGRyKSB7IHJldHVybiBBZGRyOyB9CnVpbnQ2NF90IElvc01vbm9SZXNvbHZlUlcodWludDY0X3QgR3Vlc3RBZGRyLCB1aW50NjRfdCBTaXplKSB7ICh2b2lkKUd1ZXN0QWRkcjsgKHZvaWQpU2l6ZTsgcmV0dXJuIDA7IH0Kdm9pZCBpb3NfZmV4X21vbm9fYnJpZGdlX3B1Ymxpc2godm9pZCogQnJpZGdlUmF3KSB7ICh2b2lkKUJyaWRnZVJhdzsgfQp2b2lkIGlvc19mZXhfbW9ub19jb3VudF9oZWxwZXIoaW50IE1pc3MpIHsgKHZvaWQpTWlzczsgfQppbnQgaW9zX2ZleF9tb25vX3Rha2VfcGVuZGluZyh1aW50NjRfdCogYSwgdWludDY0X3QqIGIsIHVpbnQ2NF90KiBjKSB7ICh2b2lkKWE7KHZvaWQpYjsodm9pZCljOyByZXR1cm4gMDsgfQp2b2lkIGlvc19mZXhfbW9ub19jb3VudF9hY3RpdmF0ZWQodm9pZCkge30KdWludDY0X3QgaW9zX2ZleF9tb25vX2NhcHR1cmVkX2NvdW50KHZvaWQpIHsgcmV0dXJuIDA7IH0KaW50IGlvc19mZXhfbW9ub19icmlkZ2VfYXJtZWQodm9pZCkgeyByZXR1cm4gMDsgfQp2b2lkIGlvc19mZXhfbW9ub19yZXBvcnRfYXJtZWQodWludDY0X3QgQmFzZSwgdWludDY0X3QgRW5kKSB7ICh2b2lkKUJhc2U7ICh2b2lkKUVuZDsgfQo='))"
+          xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -miphoneos-version-min=17.0 -O2 -c glue/madeira_fex_glue.c -o glue/madeira_fex_glue.o
+          xcrun -sdk iphoneos ar rcs glue/libmadeira_fex_glue.a glue/madeira_fex_glue.o
       - name: xcodebuild (unsigned, device)
         run: |
           set -e
@@ -329,6 +361,7 @@ jobs:
             -configuration Release -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            OTHER_LDFLAGS="-L$OLDPWD/glue -lmadeira_fex_glue" \
             -derivedDataPath build-out \
             build 2>&1 | tee /tmp/xcodebuild.log | tail -40
           APP=$(find build-out/Build/Products -name 'Madeira.app' -maxdepth 3 | head -1)
