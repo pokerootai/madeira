@@ -155,7 +155,19 @@ jobs:
             -DTUNE_CPU=none -DENABLE_OFFLINE_TELEMETRY=False \
             -DCMAKE_C_FLAGS=-DFEX_IOS_HOST=1 \
             -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1 -include ${PWD}/../build/fex-ios/compat.h"
-          cmake --build build-ios -- -j$(sysctl -n hw.ncpu)
+          # Shared .dylib targets fail on Apple ld (GNU-only flags); only the static
+          # archives below are needed, so keep going past shared-link failures.
+          cmake --build build-ios -- -j$(sysctl -n hw.ncpu) -k || true
+          for a in \
+            build-ios/FEXCore/Source/libFEXCore.a \
+            build-ios/FEXCore/Source/libFEXCore_Base.a \
+            build-ios/FEXCore/Source/libJemallocLibs.a \
+            build-ios/External/SoftFloat-3e/libsoftfloat_3e.a \
+            build-ios/External/cephes/libcephes_128bit.a \
+            build-ios/External/fmt/libfmt.a \
+            build-ios/External/xxhash/cmake_unofficial/libxxhash.a; do
+            test -f "$a" || { echo "MISSING $a"; exit 1; }
+          done
           find build-ios -name '*.a'
       - uses: actions/upload-artifact@v4
         with:
