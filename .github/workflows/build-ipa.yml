@@ -203,6 +203,8 @@ jobs:
         with:
           name: wine-trees
           path: wine
+      - name: Restore exec bits on downloaded toolchains
+        run: chmod -R +x toolchains wine 2>/dev/null || true
       - name: Install meson + ninja
         run: brew install meson ninja
       - name: Build DXMT PE DLLs
@@ -344,6 +346,8 @@ jobs:
           need_stub FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a
           need_stub FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a
           ls -la app/Madeira/*.a
+      - name: Restore exec bits on downloaded toolchains
+        run: chmod -R +x toolchains wine FEX app 2>/dev/null || true
       - name: Build glue stubs for FEX iOS diagnostics symbols
         run: |
           set -e
