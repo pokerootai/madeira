@@ -236,6 +236,16 @@ jobs:
           cp build-pe/src/d3d11/d3d11.dll build-pe/src/dxgi/dxgi.dll \
              build-pe/src/winemetal/winemetal.dll build-pe/src/d3d10/d3d10core.dll \
              ../../app/Madeira/aarch64-windows/
+      - name: Generate airconv shader headers
+        run: |
+          set -e
+          mkdir -p build/dxmt-ios/shader-headers
+          for m in air_msad air_samplepos air_tessellation; do
+            xcrun -sdk macosx metal -std=metal3.1 --target=air64-apple-macos14.0               -o build/dxmt-ios/shader-headers/$m.air -c research/dxmt/src/airconv/shaders/$m.metal
+            xxd -n $m -i build/dxmt-ios/shader-headers/$m.air build/dxmt-ios/shader-headers/$m.h
+          done
+          rm build/dxmt-ios/shader-headers/*.air
+          ls -la build/dxmt-ios/shader-headers/
       - name: Build DXMT unix side + combine
         run: |
           set -e
