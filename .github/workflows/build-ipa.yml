@@ -517,6 +517,14 @@ jobs:
           void winios_phase(const char *n) { (void)n; }
           void winios_drv_register(void) {}
           void madeira_set_diag_enabled(int on) { (void)on; }
+          int madeira_get_diag_enabled(void) { return 0; }
+          void winios_post_touch_down(int x, int y) { (void)x;(void)y; }
+          void winios_post_touch_move(int x, int y) { (void)x;(void)y; }
+          void winios_post_touch_up(int x, int y) { (void)x;(void)y; }
+          void winios_post_key(int vk, int down) { (void)vk;(void)down; }
+          void winios_set_compositor_frame(double x, double y, double w, double h) { (void)x;(void)y;(void)w;(void)h; }
+          void winios_pointer(int x, int y, unsigned int f, unsigned int d) { (void)x;(void)y;(void)f;(void)d; }
+          void winios_cursor_move(int x, int y) { (void)x;(void)y; }
           STUBC
           cat > sim/stubs.m <<'STUBM'
           #import <QuartzCore/CAMetalLayer.h>
