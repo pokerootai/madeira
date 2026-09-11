@@ -101,6 +101,10 @@ jobs:
           make -j$(sysctl -n hw.ncpu) -C tools/wrc
           make -j$(sysctl -n hw.ncpu) -C include
           make -j$(sysctl -n hw.ncpu) -C libs/winecrt0
+          # wine 11 per-dir "all" is a no-op here; the archive only materializes
+          # as a dependency of a full DLL link, so name the target explicitly.
+          make -j$(sysctl -n hw.ncpu) -C libs/winecrt0 aarch64-windows/libwinecrt0.a
+          test -f libs/winecrt0/aarch64-windows/libwinecrt0.a
           # Only import libs + tools are needed downstream (dxmt PE link).
           # The fork's PE ntdll.dll link intentionally fails: xlate_ios_jit is
           # defined in libntdll_unix.a at app level (single-process design),
