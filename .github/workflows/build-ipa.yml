@@ -30,7 +30,7 @@ jobs:
           sed -i '' 's/MATCHES "Darwin"/MATCHES "Darwin|iOS"/' llvm-project/llvm/cmake/modules/AddLLVM.cmake
           cmake -S llvm-project/llvm -B llvm-host-build -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD="" \
-            -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF
+            -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF
           cmake --build llvm-host-build --target llvm-tblgen -- -j$(sysctl -n hw.ncpu)
           cmake -S llvm-project/llvm -B llvm-ios-build -G "Unix Makefiles" \
             -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
@@ -39,7 +39,7 @@ jobs:
             -DLLVM_TABLEGEN="$PWD/llvm-host-build/bin/llvm-tblgen" \
             -DLLVM_TARGETS_TO_BUILD="" -DLLVM_BUILD_UTILS=OFF \
             -DLLVM_INCLUDE_UTILS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
-            -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_BUILD_TOOLS=OFF
+            -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_BUILD_TOOLS=OFF -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF
           cmake --build llvm-ios-build -- -j$(sysctl -n hw.ncpu)
           ls llvm-ios-build/lib/*.a | head -5
       - uses: actions/upload-artifact@v4
@@ -78,7 +78,6 @@ jobs:
           make -j$(sysctl -n hw.ncpu) -C tools/widl
           make -j$(sysctl -n hw.ncpu) -C tools/wrc
           make -j$(sysctl -n hw.ncpu) -C include
-          make -j$(sysctl -n hw.ncpu) -C libs/wine
           make -j$(sysctl -n hw.ncpu) -C libs/winecrt0
           make -j$(sysctl -n hw.ncpu) -C dlls/ntdll
           make -j$(sysctl -n hw.ncpu) -C dlls/dbghelp
@@ -119,6 +118,7 @@ jobs:
           cd FEX
           cmake -B build-ios -G "Unix Makefiles" \
             -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
             -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
@@ -138,11 +138,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build gnutls stack for iOS
-        run: ./build/gnutls-ios/build.sh
+        run: bash build/gnutls-ios/build.sh
       - name: Clone + build freetype
         run: |
           git clone --depth 1 --branch VER-2-13-3 https://github.com/freetype/freetype.git research/freetype
-          ./build/freetype-ios/build.sh
+          bash build/freetype-ios/build.sh
       - uses: actions/upload-artifact@v4
         with:
           name: ios-deps
@@ -191,7 +191,7 @@ jobs:
       - name: Build DXMT unix side + combine
         run: |
           set -e
-          ./build/dxmt-ios/build.sh
+          bash build/dxmt-ios/build.sh
           cd build/dxmt-ios
           xcrun -sdk iphoneos libtool -static -o libdxmt_combined.a \
             obj/*.o ../../toolchains/llvm-ios-build/lib/*.a
@@ -259,11 +259,11 @@ jobs:
           cp "$OBJ/libwineserver-base.a" app/Madeira/libwineserver.a
           ls -la app/Madeira/libwineserver.a
       - name: Build wineserver lib (patched)
-        run: ./build/wineserver/build.sh all
+        run: bash build/wineserver/build.sh all
       - name: Build ntdll unix lib
-        run: ./build/ntdll-unix/build.sh
+        run: bash build/ntdll-unix/build.sh
       - name: Build win32u unix lib
-        run: ./build/win32u-unix/build.sh
+        run: bash build/win32u-unix/build.sh
       - uses: actions/upload-artifact@v4
         with:
           name: ios-static-libs
