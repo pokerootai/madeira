@@ -571,7 +571,7 @@ jobs:
           </dict>
           </plist>
           PLIST
-          DEVTYPE=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,re; d=json.load(sys.stdin)['devicetypes']; ip=[x for x in d if re.search(r'iPhone1[6-9]|iPhone2', x['identifier'])]; print(sorted(ip, key=lambda x: x['identifier'])[-1]['identifier'])")
+          DEVTYPE=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,re; d=json.load(sys.stdin)['devicetypes']; ip=[x for x in d if x['identifier'].startswith('com.apple.CoreSimulator.SimDeviceType.iPhone-')]; g=lambda x: int(re.search(r'iPhone-(\d+)', x['identifier']).group(1)) if re.search(r'iPhone-(\d+)', x['identifier']) else -1; print(max(ip, key=g)['identifier'])")
           RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=json.load(sys.stdin)['runtimes']; ios=[x for x in r if x['platform']=='iOS' and x.get('isAvailable')]; print(ios[-1]['identifier'])")
           echo "devtype=$DEVTYPE runtime=$RUNTIME"
           UDID=$(xcrun simctl create madeira-sim "$DEVTYPE" "$RUNTIME")
