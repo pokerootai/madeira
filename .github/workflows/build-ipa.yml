@@ -387,20 +387,42 @@ jobs:
           set -e
           brew install sevenzip
           curl -L https://aka.ms/vs/17/release/vc_redist.x64.exe -o /tmp/vcredist.exe
-          rm -rf /tmp/vcredist && 7zz x /tmp/vcredist.exe -o/tmp/vcredist >/dev/null
-          mkdir -p app/Madeira/x86_64-vcruntime
-          for cab in /tmp/vcredist/.rsrc/1033/CABINET/*.cab; do
-            7zz x "$cab" -oapp/Madeira/x86_64-vcruntime -y >/dev/null
-          done
-          ls app/Madeira/x86_64-vcruntime | head -30
+          # WiX bundle: carve embedded cabs, then extract recursively until the
+          # runtime payload cab (files named <name>.dll_amd64) shows up.
           python3 -c "
-          import os,sys
+          import re,struct
+          d=open('/tmp/vcredist.exe','rb').read()
+          import os; os.makedirs('/tmp/vccabs',exist_ok=True)
+          for i,m in enumerate(re.finditer(rb'MSCF', d)):
+              size=struct.unpack_from('<I', d, m.start()+8)[0]
+              open(f'/tmp/vccabs/cab{i}','wb').write(d[m.start():m.start()+size])
+          "
+          cd /tmp/vccabs
+          for c in cab*; do 7zz x "$c" -o"$c.x" -y >/dev/null || true; done
+          for f in cab*.x/*; do
+            if file -b "$f" | grep -qi cabinet; then 7zz x "$f" -o"$f.x" -y >/dev/null || true; fi
+          done
+          cd "$GITHUB_WORKSPACE"
+          python3 -c "
+          import os, shutil, sys
           want=['concrt140.dll','msvcp140.dll','msvcp140_1.dll','msvcp140_2.dll','msvcp140_atomic_wait.dll','msvcp140_codecvt_ids.dll','vcamp140.dll','vccorlib140.dll','vcomp140.dll','vcruntime140.dll','vcruntime140_1.dll','vcruntime140_threads.dll']
-          have={f.lower() for f in os.listdir('app/Madeira/x86_64-vcruntime')}
-          missing=[w for w in want if w not in have]
+          found={}
+          for root,_,files in os.walk('/tmp/vccabs'):
+              for f in files:
+                  fl=f.lower()
+                  for w in want:
+                      if fl==w+'_amd64': found[w]=os.path.join(root,f)
+          missing=[w for w in want if w not in found]
           if missing:
-              print('MISSING:',missing); print('have:',sorted(have)); sys.exit(1)
-          print('all 12 vcruntime DLLs present')"
+              print('MISSING:',missing)
+              for root,_,files in os.walk('/tmp/vccabs'):
+                  for f in files: print(os.path.join(root,f))
+              sys.exit(1)
+          os.makedirs('app/Madeira/x86_64-vcruntime',exist_ok=True)
+          for w,src in found.items(): shutil.copy(src,'app/Madeira/x86_64-vcruntime/'+w)
+          print('placed',len(found),'vcruntime DLLs')
+          "
+          ls -la app/Madeira/x86_64-vcruntime
       - name: xcodebuild (unsigned, device)
         run: |
           set -eo pipefail
