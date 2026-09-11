@@ -79,8 +79,14 @@ jobs:
           make -j$(sysctl -n hw.ncpu) -C tools/wrc
           make -j$(sysctl -n hw.ncpu) -C include
           make -j$(sysctl -n hw.ncpu) -C libs/winecrt0
-          make -j$(sysctl -n hw.ncpu) -C dlls/ntdll
-          make -j$(sysctl -n hw.ncpu) -C dlls/dbghelp
+          # Only import libs + tools are needed downstream (dxmt PE link).
+          # The fork's PE ntdll.dll link intentionally fails: xlate_ios_jit is
+          # defined in libntdll_unix.a at app level (single-process design),
+          # matching the checked-in DLLs. Build import-lib targets, tolerate dll link failure.
+          make -j$(sysctl -n hw.ncpu) -C dlls/ntdll aarch64-windows/libntdll.a || make -j$(sysctl -n hw.ncpu) -C dlls/ntdll || true
+          make -j$(sysctl -n hw.ncpu) -C dlls/dbghelp aarch64-windows/libdbghelp.a || make -j$(sysctl -n hw.ncpu) -C dlls/dbghelp || true
+          test -f dlls/ntdll/aarch64-windows/libntdll.a
+          test -f dlls/dbghelp/aarch64-windows/libdbghelp.a
           ls libs/winecrt0/aarch64-windows/ dlls/ntdll/aarch64-windows/libntdll.a \
              dlls/dbghelp/aarch64-windows/libdbghelp.a tools/winebuild/winebuild include/config.h
       - name: Configure + build wine build-arm64ec (headers)
@@ -123,8 +129,8 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
             -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
             -DCMAKE_BUILD_TYPE=Release \
-            -DENABLE_LTO=False -DBUILD_TESTS=False -DBUILD_FEXCONFIG=False \
-            -DENABLE_OFFLINE_TELEMETRY=False
+            -DENABLE_LTO=False -DBUILD_TESTS=False -DBUILD_TESTING=OFF -DBUILD_FEXCONFIG=False \
+            -DTUNE_CPU=none -DENABLE_OFFLINE_TELEMETRY=False
           cmake --build build-ios -- -j$(sysctl -n hw.ncpu)
           find build-ios -name '*.a'
       - uses: actions/upload-artifact@v4
