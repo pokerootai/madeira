@@ -154,7 +154,7 @@ jobs:
             -DENABLE_LTO=False -DBUILD_TESTS=False -DBUILD_TESTING=OFF -DBUILD_FEXCONFIG=False \
             -DTUNE_CPU=none -DENABLE_OFFLINE_TELEMETRY=False \
             -DCMAKE_C_FLAGS=-DFEX_IOS_HOST=1 \
-            -DCMAKE_CXX_FLAGS=-DFEX_IOS_HOST=1
+            -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1 -include ${PWD}/../build/fex-ios/compat.h"
           cmake --build build-ios -- -j$(sysctl -n hw.ncpu)
           find build-ios -name '*.a'
       - uses: actions/upload-artifact@v4
