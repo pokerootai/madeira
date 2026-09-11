@@ -84,7 +84,7 @@ jobs:
           curl -L "$LLVM_MINGW_URL" | tar -xJ -C toolchains/
       - name: Install build deps
         run: |
-          brew install bison flex
+          brew install bison flex gnutls
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
           echo "$(brew --prefix flex)/bin" >> $GITHUB_PATH
       - name: Configure + build wine build-macos (aarch64 PE)
@@ -93,7 +93,7 @@ jobs:
           export PATH="$PWD/toolchains/${{ env.LLVM_MINGW_DIR }}/bin:$PATH"
           mkdir -p wine/build-macos && cd wine/build-macos
           ../configure --enable-archs=aarch64 --without-x --without-freetype --without-fontconfig \
-            --without-gnutls --without-gphoto --without-alsa --without-oss --without-pulse \
+            --with-gnutls --without-gphoto --without-alsa --without-oss --without-pulse \
             --without-vulkan --without-cups --without-dbus --without-gstreamer --without-sane \
             --without-usb --without-wayland --disable-tests > configure.log 2>&1 || { tail -60 configure.log; exit 1; }
           make -j$(sysctl -n hw.ncpu) -C tools/winebuild
@@ -121,7 +121,7 @@ jobs:
           export PATH="$PWD/toolchains/${{ env.LLVM_MINGW_DIR }}/bin:$PATH"
           mkdir -p wine/build-arm64ec && cd wine/build-arm64ec
           ../configure --enable-archs=arm64ec --without-x --without-freetype --without-fontconfig \
-            --without-gnutls --without-gphoto --without-alsa --without-oss --without-pulse \
+            --with-gnutls --without-gphoto --without-alsa --without-oss --without-pulse \
             --without-vulkan --without-cups --without-dbus --without-gstreamer --without-sane \
             --without-usb --without-wayland --disable-tests > configure.log 2>&1 || { tail -60 configure.log; exit 1; }
           make -j$(sysctl -n hw.ncpu) -C tools/widl
@@ -382,7 +382,7 @@ jobs:
         run: |
           set -e
           mkdir -p glue
-          python3 -c "import base64;open('glue/madeira_fex_glue.c','wb').write(base64.b64decode('I2luY2x1ZGUgPHN0ZGludC5oPgovKiBHbHVlIHN0dWJzIGZvciBGRVggaU9TIGRpYWdub3N0aWNzIHN5bWJvbHMgZGVmaW5lZCBvbmx5IGluIEZFWCdzCiAqIFdpbmRvd3Mtb25seSBzb3VyY2VzIChTb3VyY2UvV2luZG93cy9BUk02NEVDKS4gQmVoYXZpb3ItcHJlc2VydmluZzoKICogSW9zTW9ub1Jlc29sdmVSVz0wIGZhbGxzIGJhY2sgdG8gdGhlIG9sZCBlbXVsYXRpb24gcGF0aCAodXBzdHJlYW0gY29tbWVudCkuICovCnVpbnQ2NF90IElvc0Zmc0J5cGFzc0xvZ1s0XSA9IHswLDAsMCwwfTsKdWludDY0X3QgSW9zSml0UmV2ZXJzZVRyYW5zbGF0ZSh1aW50NjRfdCBBZGRyKSB7IHJldHVybiBBZGRyOyB9CnVpbnQ2NF90IElvc01vbm9SZXNvbHZlUlcodWludDY0X3QgR3Vlc3RBZGRyLCB1aW50NjRfdCBTaXplKSB7ICh2b2lkKUd1ZXN0QWRkcjsgKHZvaWQpU2l6ZTsgcmV0dXJuIDA7IH0Kdm9pZCBpb3NfZmV4X21vbm9fYnJpZGdlX3B1Ymxpc2godm9pZCogQnJpZGdlUmF3KSB7ICh2b2lkKUJyaWRnZVJhdzsgfQp2b2lkIGlvc19mZXhfbW9ub19jb3VudF9oZWxwZXIoaW50IE1pc3MpIHsgKHZvaWQpTWlzczsgfQppbnQgaW9zX2ZleF9tb25vX3Rha2VfcGVuZGluZyh1aW50NjRfdCogYSwgdWludDY0X3QqIGIsIHVpbnQ2NF90KiBjKSB7ICh2b2lkKWE7KHZvaWQpYjsodm9pZCljOyByZXR1cm4gMDsgfQp2b2lkIGlvc19mZXhfbW9ub19jb3VudF9hY3RpdmF0ZWQodm9pZCkge30KdWludDY0X3QgaW9zX2ZleF9tb25vX2NhcHR1cmVkX2NvdW50KHZvaWQpIHsgcmV0dXJuIDA7IH0KaW50IGlvc19mZXhfbW9ub19icmlkZ2VfYXJtZWQodm9pZCkgeyByZXR1cm4gMDsgfQp2b2lkIGlvc19mZXhfbW9ub19yZXBvcnRfYXJtZWQodWludDY0X3QgQmFzZSwgdWludDY0X3QgRW5kKSB7ICh2b2lkKUJhc2U7ICh2b2lkKUVuZDsgfQo='))"
+          python3 -c "import base64;open('glue/madeira_fex_glue.c','wb').write(base64.b64decode('I2luY2x1ZGUgPHN0ZGludC5oPgovKiBHbHVlIHN0dWJzIGZvciBGRVggaU9TIGRpYWdub3N0aWNzIHN5bWJvbHMgZGVmaW5lZCBvbmx5IGluIEZFWCdzCiAqIFdpbmRvd3Mtb25seSBzb3VyY2VzIChTb3VyY2UvV2luZG93cy9BUk02NEVDKS4gQmVoYXZpb3ItcHJlc2VydmluZzoKICogSW9zTW9ub1Jlc29sdmVSVz0wIGZhbGxzIGJhY2sgdG8gdGhlIG9sZCBlbXVsYXRpb24gcGF0aCAodXBzdHJlYW0gY29tbWVudCkuICovCnVpbnQ2NF90IElvc0Zmc0J5cGFzc0xvZ1s0XSA9IHswLDAsMCwwfTsKdWludDY0X3QgSW9zSml0UmV2ZXJzZVRyYW5zbGF0ZSh1aW50NjRfdCBBZGRyKSB7IHJldHVybiBBZGRyOyB9CnVpbnQ2NF90IElvc01vbm9SZXNvbHZlUlcodWludDY0X3QgR3Vlc3RBZGRyLCB1aW50NjRfdCBTaXplKSB7ICh2b2lkKUd1ZXN0QWRkcjsgKHZvaWQpU2l6ZTsgcmV0dXJuIDA7IH0Kdm9pZCBpb3NfZmV4X21vbm9fYnJpZGdlX3B1Ymxpc2godm9pZCogQnJpZGdlUmF3KSB7ICh2b2lkKUJyaWRnZVJhdzsgfQp2b2lkIGlvc19mZXhfbW9ub19jb3VudF9oZWxwZXIoaW50IE1pc3MpIHsgKHZvaWQpTWlzczsgfQppbnQgaW9zX2ZleF9tb25vX3Rha2VfcGVuZGluZyh1aW50NjRfdCogYSwgdWludDY0X3QqIGIsIHVpbnQ2NF90KiBjKSB7ICh2b2lkKWE7KHZvaWQpYjsodm9pZCljOyByZXR1cm4gMDsgfQp2b2lkIGlvc19mZXhfbW9ub19jb3VudF9hY3RpdmF0ZWQodm9pZCkge30KdWludDY0X3QgaW9zX2ZleF9tb25vX2NhcHR1cmVkX2NvdW50KHZvaWQpIHsgcmV0dXJuIDA7IH0KaW50IGlvc19mZXhfbW9ub19icmlkZ2VfYXJtZWQodm9pZCkgeyByZXR1cm4gMDsgfQp2b2lkIGlvc19mZXhfbW9ub19yZXBvcnRfYXJtZWQodWludDY0X3QgQmFzZSwgdWludDY0X3QgRW5kKSB7ICh2b2lkKUJhc2U7ICh2b2lkKUVuZDsgfQoKLyogdGVybWluZm8gc3R1YnM6IExMVk0ncyBQcm9jZXNzOjpGaWxlRGVzY3JpcHRvckhhc0NvbG9ycyBwdWxscyB0aGVzZSBpbiBmcm9tCiAqIGxpYmR4bXRfY29tYmluZWQuYSAoTExWTSBpT1Mgc3RhdGljIGxpYnMpOyBpT1MgaGFzIG5vIHRlcm1pbmZvLiAqLwppbnQgc2V0dXB0ZXJtKGNvbnN0IGNoYXIgKnRlcm0sIGludCBmZCwgaW50ICplcnJyZXQpIHsgKHZvaWQpdGVybTsgKHZvaWQpZmQ7IGlmIChlcnJyZXQpICplcnJyZXQgPSAwOyByZXR1cm4gLTE7IH0KaW50IHRpZ2V0bnVtKGNvbnN0IGNoYXIgKmNhcCkgeyAodm9pZCljYXA7IHJldHVybiAtMjsgfQp2b2lkICpzZXRfY3VydGVybSh2b2lkICp0KSB7ICh2b2lkKXQ7IHJldHVybiAwOyB9CmludCBkZWxfY3VydGVybSh2b2lkICp0KSB7ICh2b2lkKXQ7IHJldHVybiAwOyB9Cg=='))"
           xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
             -miphoneos-version-min=17.0 -O2 -c glue/madeira_fex_glue.c -o glue/madeira_fex_glue.o
           xcrun -sdk iphoneos ar rcs glue/libmadeira_fex_glue.a glue/madeira_fex_glue.o
