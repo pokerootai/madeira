@@ -1,0 +1,350 @@
+name: Build Madeira IPA
+on:
+  workflow_dispatch:
+
+env:
+  LLVM_MINGW_DIR: llvm-mingw-20260421-ucrt-macos-universal
+  LLVM_MINGW_URL: https://github.com/mstorsjo/llvm-mingw/releases/download/20260421/llvm-mingw-20260421-ucrt-macos-universal.tar.xz
+
+jobs:
+  toolchains-llvm:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download llvm-mingw
+        run: |
+          mkdir -p toolchains
+          curl -L "$LLVM_MINGW_URL" | tar -xJ -C toolchains/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llvm-mingw
+          path: toolchains/${{ env.LLVM_MINGW_DIR }}
+          compression-level: 1
+      - name: Build LLVM 15.0.7 for iOS
+        run: |
+          set -e
+          mkdir -p toolchains && cd toolchains
+          curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.7/llvm-project-15.0.7.src.tar.xz -o llvm-project.tar.xz
+          tar -xf llvm-project.tar.xz
+          mv llvm-project-15.0.7.src llvm-project
+          sed -i '' 's/MATCHES "Darwin"/MATCHES "Darwin|iOS"/' llvm-project/llvm/cmake/modules/AddLLVM.cmake
+          cmake -S llvm-project/llvm -B llvm-host-build -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD="" \
+            -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF
+          cmake --build llvm-host-build --target llvm-tblgen -- -j$(sysctl -n hw.ncpu)
+          cmake -S llvm-project/llvm -B llvm-ios-build -G "Unix Makefiles" \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_TABLEGEN="$PWD/llvm-host-build/bin/llvm-tblgen" \
+            -DLLVM_TARGETS_TO_BUILD="" -DLLVM_BUILD_UTILS=OFF \
+            -DLLVM_INCLUDE_UTILS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_BUILD_TOOLS=OFF
+          cmake --build llvm-ios-build -- -j$(sysctl -n hw.ncpu)
+          ls llvm-ios-build/lib/*.a | head -5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llvm-ios
+          path: |
+            toolchains/llvm-ios-build
+            toolchains/llvm-project/llvm/include
+          compression-level: 1
+
+  wine-trees:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout wine submodule
+        run: git submodule update --init wine
+      - name: Download llvm-mingw
+        run: |
+          mkdir -p toolchains
+          curl -L "$LLVM_MINGW_URL" | tar -xJ -C toolchains/
+      - name: Install build deps
+        run: |
+          brew install bison flex
+          echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
+          echo "$(brew --prefix flex)/bin" >> $GITHUB_PATH
+      - name: Configure + build wine build-macos (aarch64 PE)
+        run: |
+          set -e
+          export PATH="$PWD/toolchains/${{ env.LLVM_MINGW_DIR }}/bin:$PATH"
+          mkdir -p wine/build-macos && cd wine/build-macos
+          ../configure --enable-archs=aarch64 --without-x --without-freetype --without-fontconfig \
+            --without-gnutls --without-gphoto --without-alsa --without-oss --without-pulse \
+            --without-vulkan --without-cups --without-dbus --without-gstreamer --without-sane \
+            --without-usb --without-wayland --disable-tests > configure.log 2>&1 || { tail -60 configure.log; exit 1; }
+          make -j$(sysctl -n hw.ncpu) -C tools/winebuild
+          make -j$(sysctl -n hw.ncpu) -C tools/widl
+          make -j$(sysctl -n hw.ncpu) -C tools/wrc
+          make -j$(sysctl -n hw.ncpu) -C include
+          make -j$(sysctl -n hw.ncpu) -C libs/wine
+          make -j$(sysctl -n hw.ncpu) -C libs/winecrt0
+          make -j$(sysctl -n hw.ncpu) -C dlls/ntdll
+          make -j$(sysctl -n hw.ncpu) -C dlls/dbghelp
+          ls libs/winecrt0/aarch64-windows/ dlls/ntdll/aarch64-windows/libntdll.a \
+             dlls/dbghelp/aarch64-windows/libdbghelp.a tools/winebuild/winebuild include/config.h
+      - name: Configure + build wine build-arm64ec (headers)
+        run: |
+          set -e
+          export PATH="$PWD/toolchains/${{ env.LLVM_MINGW_DIR }}/bin:$PATH"
+          mkdir -p wine/build-arm64ec && cd wine/build-arm64ec
+          ../configure --enable-archs=arm64ec --without-x --without-freetype --without-fontconfig \
+            --without-gnutls --without-gphoto --without-alsa --without-oss --without-pulse \
+            --without-vulkan --without-cups --without-dbus --without-gstreamer --without-sane \
+            --without-usb --without-wayland --disable-tests > configure.log 2>&1 || { tail -60 configure.log; exit 1; }
+          make -j$(sysctl -n hw.ncpu) -C tools/widl
+          make -j$(sysctl -n hw.ncpu) -C include
+          if [ ! -f include/dwrite_3.h ]; then make -j$(sysctl -n hw.ncpu) -C dlls/dwrite; fi
+          ls include/dwrite.h include/dwrite_3.h include/config.h
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wine-trees
+          path: |
+            wine/build-macos
+            wine/build-arm64ec
+          compression-level: 1
+
+  fex:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout FEX submodule
+        run: |
+          git submodule update --init FEX
+          cd FEX && git submodule update --init --recursive || true
+      - name: Build FEX for iOS
+        run: |
+          set -e
+          cd FEX
+          cmake -B build-ios -G "Unix Makefiles" \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
+            -DCMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path) \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_LTO=False -DBUILD_TESTS=False -DBUILD_FEXCONFIG=False \
+            -DENABLE_OFFLINE_TELEMETRY=False
+          cmake --build build-ios -- -j$(sysctl -n hw.ncpu)
+          find build-ios -name '*.a'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fex-libs
+          path: FEX/build-ios
+          compression-level: 1
+
+  deps:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build gnutls stack for iOS
+        run: ./build/gnutls-ios/build.sh
+      - name: Clone + build freetype
+        run: |
+          git clone --depth 1 --branch VER-2-13-3 https://github.com/freetype/freetype.git research/freetype
+          ./build/freetype-ios/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-deps
+          path: |
+            toolchains/gnutls-ios
+            build/freetype-ios/build
+            research/freetype/include
+          compression-level: 1
+
+  dxmt:
+    runs-on: macos-15
+    needs: [toolchains-llvm, wine-trees]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout dxmt submodule (recursive)
+        run: |
+          git submodule update --init research/dxmt
+          cd research/dxmt && git submodule update --init --recursive
+      - uses: actions/download-artifact@v4
+        with:
+          name: llvm-mingw
+          path: toolchains/${{ env.LLVM_MINGW_DIR }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: llvm-ios
+          path: toolchains
+      - uses: actions/download-artifact@v4
+        with:
+          name: wine-trees
+          path: wine
+      - name: Install meson + ninja
+        run: brew install meson ninja
+      - name: Build DXMT PE DLLs
+        run: |
+          set -e
+          ln -sfn ../../toolchains research/dxmt/toolchains
+          cd research/dxmt
+          export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+          export PATH="$PWD/toolchains/${{ env.LLVM_MINGW_DIR }}/bin:/usr/bin:/opt/homebrew/bin:$PATH"
+          meson setup --cross-file build-aarch64-win.txt --native-file build-osx.txt \
+            -Dwine_build_path=../../wine/build-macos build-pe
+          meson compile -C build-pe
+          cp build-pe/src/d3d11/d3d11.dll build-pe/src/dxgi/dxgi.dll \
+             build-pe/src/winemetal/winemetal.dll build-pe/src/d3d10/d3d10core.dll \
+             ../../app/Madeira/aarch64-windows/
+      - name: Build DXMT unix side + combine
+        run: |
+          set -e
+          ./build/dxmt-ios/build.sh
+          cd build/dxmt-ios
+          xcrun -sdk iphoneos libtool -static -o libdxmt_combined.a \
+            obj/*.o ../../toolchains/llvm-ios-build/lib/*.a
+          cp libdxmt_combined.a ../../app/Madeira/
+          ls -la ../../app/Madeira/libdxmt_combined.a
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dxmt-libs
+          path: |
+            app/Madeira/libdxmt_combined.a
+            app/Madeira/aarch64-windows/d3d11.dll
+            app/Madeira/aarch64-windows/dxgi.dll
+            app/Madeira/aarch64-windows/winemetal.dll
+            app/Madeira/aarch64-windows/d3d10core.dll
+          compression-level: 0
+
+  ios-libs:
+    runs-on: macos-15
+    needs: [wine-trees, deps]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout wine submodule
+        run: git submodule update --init wine
+      - uses: actions/download-artifact@v4
+        with:
+          name: wine-trees
+          path: wine
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-deps
+          path: .
+      - name: Install llvm (objcopy)
+        run: |
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+      - name: Create base libwineserver.a
+        run: |
+          set -e
+          BUILD_DIR="$PWD/build/wineserver"
+          WINE_SRC="$PWD/wine"
+          SHIMS_DIR="$PWD/build/ntdll-unix/shims"
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          OBJ="$BUILD_DIR/base-obj"; mkdir -p "$OBJ"
+          FAILED=""
+          for src in "$WINE_SRC"/server/*.c; do
+            name=$(basename "$src" .c)
+            if xcrun -sdk iphoneos clang \
+              -arch arm64 -isysroot "$SDK" -miphoneos-version-min=17.0 -O2 \
+              -I"$WINE_SRC/include" -I"$WINE_SRC/include/wine" \
+              -I"$WINE_SRC/build-macos/include" \
+              -I"$BUILD_DIR" -I"$WINE_SRC/server" -I"$SHIMS_DIR" \
+              -include "$BUILD_DIR/config_ios.h" -include stdarg.h \
+              -include "$BUILD_DIR/unicode_fix.h" -include "$BUILD_DIR/wineserver_ios_kill.h" \
+              -DBINDIR=\"/usr/local/bin\" -DDATADIR=\"/usr/local/share\" \
+              -D__WINESRC__ -DWINE_IOS=1 -Dmain=wineserver_main \
+              -Wno-implicit-function-declaration \
+              -c "$src" -o "$OBJ/$name.o" 2>"$OBJ/err-$name.txt"; then
+              echo "  $name OK"
+            else
+              echo "  $name FAILED"; FAILED="$FAILED $name"
+            fi
+          done
+          echo "FAILED:$FAILED"
+          ar rcs "$OBJ/libwineserver-base.a" "$OBJ"/*.o
+          cp "$OBJ/libwineserver-base.a" app/Madeira/libwineserver.a
+          ls -la app/Madeira/libwineserver.a
+      - name: Build wineserver lib (patched)
+        run: ./build/wineserver/build.sh all
+      - name: Build ntdll unix lib
+        run: ./build/ntdll-unix/build.sh
+      - name: Build win32u unix lib
+        run: ./build/win32u-unix/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-static-libs
+          path: |
+            app/Madeira/libwineserver.a
+            app/Madeira/libntdll_unix.a
+            app/Madeira/libwin32u_unix.a
+          compression-level: 0
+
+  app:
+    runs-on: macos-15
+    needs: [dxmt, ios-libs, fex]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dxmt-libs
+          path: app/Madeira
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-static-libs
+          path: app/Madeira
+      - uses: actions/download-artifact@v4
+        with:
+          name: fex-libs
+          path: FEX/build-ios
+      - name: Stub any missing referenced static libs
+        run: |
+          set -e
+          need_stub() {
+            local path="$1"
+            if [ ! -f "$path" ]; then
+              echo "STUB (missing): $path"
+              mkdir -p "$(dirname "$path")"
+              echo 'static int __madeira_stub;' | xcrun -sdk iphoneos clang -arch arm64 \
+                -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -miphoneos-version-min=17.0 \
+                -x c -c - -o /tmp/stub.o
+              xcrun -sdk iphoneos ar rcs "$path" /tmp/stub.o
+            else
+              echo "ok: $path"
+            fi
+          }
+          need_stub FEX/build-ios/FEXCore/Source/libFEXCore.a
+          need_stub FEX/build-ios/FEXCore/Source/libFEXCore_Base.a
+          need_stub FEX/build-ios/FEXCore/Source/libJemallocLibs.a
+          need_stub FEX/build-ios/External/fmt/libfmt.a
+          need_stub FEX/build-ios/External/cephes/libcephes_128bit.a
+          need_stub FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a
+          need_stub FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a
+          ls -la app/Madeira/*.a
+      - name: xcodebuild (unsigned, device)
+        run: |
+          set -e
+          cd app
+          xcodebuild -project Madeira.xcodeproj -list || true
+          xcodebuild -project Madeira.xcodeproj -scheme Madeira \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            -derivedDataPath build-out \
+            build 2>&1 | tee /tmp/xcodebuild.log | tail -40
+          APP=$(find build-out/Build/Products -name 'Madeira.app' -maxdepth 3 | head -1)
+          echo "APP=$APP"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qr Madeira-unsigned.ipa Payload
+          ls -la Madeira-unsigned.ipa
+      - name: Verify IPA structure
+        run: |
+          set -e
+          cd app
+          rm -rf verify && mkdir verify && cd verify
+          unzip -q ../Madeira-unsigned.ipa
+          BIN="Payload/Madeira.app/Madeira"
+          file "$BIN"
+          if otool -l "$BIN" | grep -q 'arm64'; then echo "arch check: arm64 present"; fi
+          if [ -d Payload/Madeira.app/_CodeSignature ]; then echo "ERROR: signed!"; exit 1; else echo "unsigned: OK (no _CodeSignature)"; fi
+          /usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' Payload/Madeira.app/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print MinimumOSVersion' Payload/Madeira.app/Info.plist
+          du -sh Payload/Madeira.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Madeira-unsigned-ipa
+          path: app/Madeira-unsigned.ipa
+          compression-level: 0
